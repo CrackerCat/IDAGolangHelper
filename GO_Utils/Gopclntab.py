@@ -5,7 +5,7 @@ import ida_bytes
 import ida_funcs
 import ida_search
 import ida_segment
-import Utils
+from . import Utils
 
 info = idaapi.get_inf_structure()
 try:
@@ -43,7 +43,7 @@ def rename(beg, ptr, make_funcs = True):
     size = ptr.ptr(pos)
     pos += ptr.size
     end = pos + (size * ptr.size * 2)
-    print "%x" % end
+    print("%x" % end)
     while pos < end:
         offset = ptr.ptr(pos + ptr.size)
         ptr.maker(pos)         #in order to get xrefs
@@ -56,5 +56,6 @@ def rename(beg, ptr, make_funcs = True):
             ida_funcs.add_func(func_addr)
         name_offset = idc.get_wide_dword(base+offset+ptr.size)
         name = idc.get_strlit_contents(base + name_offset)
+        Utils.add_function_comment(func_addr, name)
         name = Utils.relaxName(name)
         Utils.rename(func_addr, name)
