@@ -1,6 +1,8 @@
 import ida_enum
 import ida_struct
 import idc
+import os 
+import json 
 import string
 import random
 
@@ -20,9 +22,11 @@ def id_generator(size=6, chars=string.ascii_uppercase + string.digits):
 
 
 def rename(offset, name):
-    name = name.decode("utf-8") 
+    if isinstance(name, (bytes, bytearray)):
+        name = name.decode("utf-8")
     if name == idc.get_func_name(offset):
         return 
+    print(name)
     idc.set_name(offset, name, idc.SN_AUTO)
 
 
@@ -33,7 +37,8 @@ def relaxName(name):
 
 
 def add_function_comment(ea, cmt):
-    cmt = cmt.decode("utf-8")
+    if isinstance(cmt, (bytes, bytearray)):
+        cmt = cmt.decode("utf-8")
     idc.set_func_cmt(ea, cmt, 0)
 
 def get_bitness(addr):
@@ -53,6 +58,52 @@ def is_hardcoded_slice(addr, bt_obj):
     if val1 != val2:
         return False
     return True
+
+
+def load_function_comments():
+    go_file = os.path.join(os.path.dirname(__file__),"gopher.json")
+    try:
+        with open(go_file, 'r') as infile:
+            data = json.load(infile)
+            return data
+    except Exception as e:
+        print("Exception", e)
+        return None 
+
+
+def get_function_comment(symbol, data):
+    DEBUG = False 
+    symbol = symbol.decode("utf-8")
+    if "main." in symbol:
+        return None 
+    tt  = symbol.split(".")
+    if len(tt) != 2:
+        return 
+    try:
+        module = tt[0]
+        api = tt[1] 
+        if DEBUG:
+            print("11111", module, type(module), api, type(api))
+        if module not in data:
+            if DEBUG:
+                print("DEBUG 22222:", module, api)
+            return None 
+        if api not in data[module]:
+            if DEBUG:
+                print("DEBUG 33333:", module, api)
+            return None
+        
+        func_dec = data[module][api]["func_dec"]
+        comment = data[module][api]["comment"]
+        if DEBUG:
+            print("44444", comment + func_dec)
+        return comment + func_dec
+
+    except Exception as e:
+        if DEBUG:
+            print("Exception", e)
+        return None
+
 
 
 class StructCreator(object):

@@ -38,12 +38,12 @@ def findGoPcLn():
 
 
 def rename(beg, ptr, make_funcs = True):
+    go_fun = Utils.load_function_comments()
     base = beg
     pos = beg + 8 #skip header
     size = ptr.ptr(pos)
     pos += ptr.size
     end = pos + (size * ptr.size * 2)
-    print("%x" % end)
     while pos < end:
         offset = ptr.ptr(pos + ptr.size)
         ptr.maker(pos)         #in order to get xrefs
@@ -56,6 +56,13 @@ def rename(beg, ptr, make_funcs = True):
             ida_funcs.add_func(func_addr)
         name_offset = idc.get_wide_dword(base+offset+ptr.size)
         name = idc.get_strlit_contents(base + name_offset)
-        Utils.add_function_comment(func_addr, name)
+        comment = name 
+        if go_fun:
+            tcomment = Utils.get_function_comment(name, go_fun)
+            if tcomment:
+                comment = tcomment 
+        Utils.add_function_comment(func_addr, comment)
         name = Utils.relaxName(name)
+        print(name)
         Utils.rename(func_addr, name)
+
