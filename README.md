@@ -21,7 +21,6 @@ https://2016.zeronights.ru/wp-content/uploads/2016/12/GO_Zaytsev.pdf - My presen
 ```
 .text:0044F710       ; // Valid reports whether p consists entirely of valid UTF-8-encoded runes.
 .text:0044F710       ; func Valid(p []byte) bool
-.text:0044F710       ; Attributes: info_from_lumina
 .text:0044F710
 .text:0044F710       ; void __cdecl unicode_utf8_Valid(__uint8 p, bool _r1)
 ```
