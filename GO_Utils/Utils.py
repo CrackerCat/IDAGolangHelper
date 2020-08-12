@@ -1,4 +1,8 @@
+import ida_enum
+import ida_struct
 import idc
+import os 
+import json 
 import string
 import random
 
@@ -9,8 +13,8 @@ class bitZ(object):
         self.maker = maker
 
 
-bits32 = bitZ(idc.Dword, 4, idc.MakeDword)
-bits64 = bitZ(idc.Qword, 8, idc.MakeQword)
+bits32 = bitZ(idc.get_wide_dword, 4, idc.create_dword)
+bits64 = bitZ(idc.get_qword, 8, idc.create_qword)
 
 
 def id_generator(size=6, chars=string.ascii_uppercase + string.digits):
@@ -18,21 +22,28 @@ def id_generator(size=6, chars=string.ascii_uppercase + string.digits):
 
 
 def rename(offset, name):
-    res = idc.MakeNameEx(offset, name, idc.SN_NOWARN)
-    if res == 0:
-        name = name+"_autogen_"+id_generator()
-        idc.MakeNameEx(offset, name, idc.SN_NOWARN)
+    if isinstance(name, (bytes, bytearray)):
+        name = name.decode("utf-8")
+    if name == idc.get_func_name(offset):
+        return 
+    print(name)
+    idc.set_name(offset, name, idc.SN_AUTO)
 
 
 def relaxName(name):
-    name = name.replace('.', '_').replace("<-", '_chan_left_').replace('*', '_ptr_').replace('-', '_').replace(';','').replace('"', '').replace('\\', '')
-    name = name.replace('(', '').replace(')', '').replace('/', '_').replace(' ', '_').replace(',', 'comma').replace('{','').replace('}', '').replace('[', '').replace(']', '')
+    name = name.replace(b'.', b'_').replace(b"<-", b'_chan_left_').replace(b'*', b'_ptr_').replace(b'-', b'_').replace(b';',b'').replace(b'"', b'').replace(b'\\', b'')
+    name = name.replace(b'(', b'').replace(b')', b'').replace(b'/', b'_').replace(b' ', b'_').replace(b',', b'comma').replace(b'{',b'').replace(b'}', b'').replace(b'[', b'').replace(b']', b'')
     return name
 
 
+def add_function_comment(ea, cmt):
+    if isinstance(cmt, (bytes, bytearray)):
+        cmt = cmt.decode("utf-8")
+    idc.set_func_cmt(ea, cmt, 0)
+
 def get_bitness(addr):
     ptr = bits32
-    if idc.GetSegmentAttr(addr, idc.SEGATTR_BITNESS) == 2:
+    if idc.get_segm_attr(addr, idc.SEGATTR_BITNESS) == 2:
         ptr = bits64
     return ptr
 
@@ -49,20 +60,66 @@ def is_hardcoded_slice(addr, bt_obj):
     return True
 
 
+def load_function_comments():
+    go_file = os.path.join(os.path.dirname(__file__),"gopher.json")
+    try:
+        with open(go_file, 'r') as infile:
+            data = json.load(infile)
+            return data
+    except Exception as e:
+        print("Exception", e)
+        return None 
+
+
+def get_function_comment(symbol, data):
+    DEBUG = False 
+    symbol = symbol.decode("utf-8")
+    if "main." in symbol:
+        return None 
+    tt  = symbol.split(".")
+    if len(tt) != 2:
+        return 
+    try:
+        module = tt[0]
+        api = tt[1] 
+        if DEBUG:
+            print("11111", module, type(module), api, type(api))
+        if module not in data:
+            if DEBUG:
+                print("DEBUG 22222:", module, api)
+            return None 
+        if api not in data[module]:
+            if DEBUG:
+                print("DEBUG 33333:", module, api)
+            return None
+        
+        func_dec = data[module][api]["func_dec"]
+        comment = data[module][api]["comment"]
+        if DEBUG:
+            print("44444", comment + func_dec)
+        return comment + func_dec
+
+    except Exception as e:
+        if DEBUG:
+            print("Exception", e)
+        return None
+
+
+
 class StructCreator(object):
 
     def __init__(self, bt_obj):
         self.types_id = {}
         if bt_obj.size == 8:
-            self.uintptr = (idc.FF_QWRD|idc.FF_DATA, -1, bt_obj.size)
+            self.uintptr = (idc.FF_QWORD|idc.FF_DATA, -1, bt_obj.size)
         else:
-            self.uintptr = (idc.FF_DWRD | idc.FF_DATA, -1, bt_obj.size)
+            self.uintptr = (idc.FF_DWORD | idc.FF_DATA, -1, bt_obj.size)
 
     def createStruct(self, name):
-        sid = idc.GetStrucIdByName(name)
+        sid = ida_struct.get_struc_id(name)
         if sid != -1:
-            idc.DelStruc(sid)
-        sid = idc.AddStrucEx(-1, name, 0)
+            idc.del_struc(sid)
+        sid = idc.add_struc(-1, name, 0)
         self.types_id['name'] = sid
         return sid
 
@@ -81,19 +138,19 @@ class StructCreator(object):
                 new_type = i[1]
             else:
                 new_type = name + " *"
-            res = idc.AddStrucMember(sid, i[0], -1, i1, i2, i3)
+            res = idc.add_struc_member(sid, i[0], -1, i1, i2, i3)
             use_name = i[0]
             if res == -1: #Bad name
-                #print "Bad name %s for struct member" % i[0]
+                #print("Bad name %s for struct member" % i[0])
                 use_name = i[0] + "_autogen_"+id_generator()
-                idc.AddStrucMember(sid, use_name, -1, i1, i2, i3)
+                idc.add_struc_member(sid, use_name, -1, i1, i2, i3)
             if new_type is not None:
-                offset = idc.GetMemberOffset(sid, use_name)
-                #print "Setting %s as %s" % (i[0], new_type)
-                idc.SetType(idc.GetMemberId(sid, offset), new_type)
+                offset = idc.get_member_offset(sid, use_name)
+                #print("Setting %s as %s" % (i[0], new_type))
+                idc.SetType(idc.get_member_id(sid, offset), new_type)
 
     def makeStruct(self, i):
-        print "Creating structure %s" % (i[0])
+        print("Creating structure %s" % (i[0]))
         sid = self.createStruct(i[0])
         self.fillStruct(sid, i[1])
 
@@ -102,13 +159,13 @@ class StructCreator(object):
             self.makeStruct(i)
 
     def createEnum(self, enum):
-        eid = idc.AddEnum(-1, enum[0], 0x1100000) #what is this flag?
-        idc.SetEnumBf(eid, 1)
+        eid = idc.add_enum(-1, enum[0], 0x1100000) #what is this flag?
+        ida_enum.set_enum_bf(eid, 1)
         val = 0
         mask = 0x1f
-        idc.SetEnumWidth(eid, 1)
+        ida_enum.set_enum_width(eid, 1)
         for i in enum[1]:
-            idc.AddConstEx(eid, i, val, mask)
+            idc.add_enum_member(eid, i, val, mask)
             val += 1
 
     def createEnums(self, enums):
